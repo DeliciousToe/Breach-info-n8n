@@ -1,0 +1,377 @@
+{
+  "name": "Breach & Infection Notifier",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "017fe0b4-9477-43af-a17e-d1af9d2c4af7",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 17,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "b799e207-bafa-4005-9e25-0da5f0c0b437",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -192,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://feeds.feedburner.com/TheHackersNews",
+        "options": {}
+      },
+      "id": "a561d3b7-ee8d-4cec-9591-2fa82eaa03a9",
+      "name": "Fetch The Hacker News",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        608
+      ],
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://www.securityweek.com/feed/",
+        "options": {}
+      },
+      "id": "fb8cdb8c-356f-4de6-aea4-b77d6791b636",
+      "name": "Fetch SecurityWeek",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        800
+      ],
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://www.helpnetsecurity.com/feed/",
+        "options": {}
+      },
+      "id": "94927067-9fd7-44fe-9607-ee1e3c28f650",
+      "name": "Fetch Help Net Security",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        992
+      ],
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://blog.talosintelligence.com/feed/",
+        "options": {}
+      },
+      "id": "29880d1a-2c0a-4f1f-8e26-cbc337485d61",
+      "name": "Fetch Cisco Talos",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        1184
+      ],
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "id": "3dd8c7d1-7d37-4b00-b337-ac9d90b6ac79",
+      "name": "Merge 1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        304,
+        688
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "3261b961-a937-4e18-a254-7101405e59d8",
+      "name": "Merge 2",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        512,
+        832
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "989871ae-3856-40c4-8086-a90d806ef308",
+      "name": "Merge 3",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        704,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst now = new Date();\nconst twentyFourHoursAgo = now.getTime() - 24 * 60 * 60 * 1000;\n\nconst seenLinks = new Set();\nconst filteredItems = [];\n\nfor (const item of items) {\n  const json = item.json;\n  \n  const title = json.title || '';\n  const content = json.contentSnippet || json.content || json.description || json.summary || '';\n  const link = json.link || '';\n  const pubDateStr = json.pubDate || json.isoDate || json.date || '';\n  \n  if (!title || !link) continue;\n  \n  const pubDate = new Date(pubDateStr);\n  const pubTime = pubDate.getTime();\n  \n  // Filter to last 24h\n  const isLast24h = !isNaN(pubTime) && pubTime >= twentyFourHoursAgo;\n  if (!isLast24h) continue;\n  \n  // Deduplicate by link\n  const cleanLink = link.trim().toLowerCase();\n  if (seenLinks.has(cleanLink)) continue;\n  seenLinks.add(cleanLink);\n  \n  // Identify the source\n  let source = 'Security News';\n  if (link.includes('thehackernews.com') || link.includes('feedburner')) {\n    source = 'The Hacker News';\n  } else if (link.includes('securityweek.com')) {\n    source = 'SecurityWeek';\n  } else if (link.includes('helpnetsecurity.com')) {\n    source = 'Help Net Security';\n  } else if (link.includes('talosintelligence.com') || link.includes('cisco')) {\n    source = 'Cisco Talos';\n  }\n  \n  // Clean HTML tags and limit length\n  const cleanContent = content\n    .replace(/<[^>]*>/g, '')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"')\n    .replace(/\\s+/g, ' ')\n    .trim()\n    .substring(0, 500);\n  \n  filteredItems.push({\n    json: {\n      title: title.trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"'),\n      content: cleanContent + (content.length > 500 ? '...' : ''),\n      link: link.trim(),\n      pubDate: pubDateStr,\n      pubTime: pubTime,\n      source: source\n    }\n  });\n}\n\n// Sort by date, newest first\nfilteredItems.sort((a, b) => b.json.pubTime - a.json.pubTime);\n\nreturn filteredItems.slice(0, 15);"
+      },
+      "id": "ff747a2e-9b3d-4010-9320-ec7aca7d9fba",
+      "name": "Filter & Clean (24h)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "81111111-1111-1111-1111-11111111111a",
+              "name": "title",
+              "value": "={{ $json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "81111111-1111-1111-1111-11111111111b",
+              "name": "content",
+              "value": "={{ $json.content }}",
+              "type": "string"
+            },
+            {
+              "id": "81111111-1111-1111-1111-11111111111c",
+              "name": "link",
+              "value": "={{ $json.link }}",
+              "type": "string"
+            },
+            {
+              "id": "81111111-1111-1111-1111-11111111111d",
+              "name": "pubDate",
+              "value": "={{ $json.pubDate }}",
+              "type": "string"
+            },
+            {
+              "id": "81111111-1111-1111-1111-11111111111e",
+              "name": "source",
+              "value": "={{ $json.source }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "75b80b48-51d8-4ddc-8858-cbd3299917a8",
+      "name": "Edit Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1104,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "maxItems": 5
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1312,
+        992
+      ],
+      "id": "ce2df367-f268-4952-b930-dbaf9c8dd2ef",
+      "name": "Limit"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Fetch The Hacker News",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch SecurityWeek",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Help Net Security",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Cisco Talos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch The Hacker News",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch SecurityWeek",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Help Net Security",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Cisco Talos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch The Hacker News": {
+      "main": [
+        [
+          {
+            "node": "Merge 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch SecurityWeek": {
+      "main": [
+        [
+          {
+            "node": "Merge 1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge 1": {
+      "main": [
+        [
+          {
+            "node": "Merge 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Help Net Security": {
+      "main": [
+        [
+          {
+            "node": "Merge 2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge 2": {
+      "main": [
+        [
+          {
+            "node": "Merge 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Cisco Talos": {
+      "main": [
+        [
+          {
+            "node": "Merge 3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge 3": {
+      "main": [
+        [
+          {
+            "node": "Filter & Clean (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter & Clean (24h)": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "da78220e-4799-43a8-a81f-6085bbb2e3a8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b442e40fe32dc8fd6a31bed3b27df7767976fb3a6a62af8fdb5f9305df3ef5df"
+  },
+  "id": "jZ0PlWJ6ZXcTvH0c",
+  "tags": []
+}
