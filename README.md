@@ -1,26 +1,26 @@
 # 🚨 Breach & Infection Notifier (n8n Workflow)
 
-Automatyczny system agregacji i monitorowania informacji o cyberatakach, wyciekach danych (data breaches), ransomware oraz infekcjach złośliwym oprogramowaniem z ostatnich **24 godzin** z renomowanych angielskojęzycznych źródeł, z bezpośrednimi powiadomieniami na kanał Discord (w formie estetycznych kart Rich Embed).
+An automated system for aggregating and monitoring information about cyberattacks, data breaches, ransomware, and malware infections from the last **24 hours** from reputable English-language sources, with direct notifications to a Discord channel (in the form of aesthetic Rich Embed cards).
 
-Ten workflow łączy dane z czterech niezależnych feedów RSS, filtruje je, pozostawiając wyłącznie wpisy opublikowane w ciągu ostatnich 24 godzin od uruchomienia, deduplikuje powtarzające się wpisy, oczyszcza treść z kodu HTML/encji oraz ogranicza liczbę wysyłanych wiadomości do maksymalnie 15 najnowszych (zabezpieczenie przed floodowaniem) i wysyła je na Discorda.
+This workflow combines data from four independent RSS feeds, filters them to keep only entries published within the last 24 hours of execution, deduplicates repeating entries, cleans the content of HTML tags/entities, limits the number of sent messages to a maximum of 15 newest entries (flood protection), and sends them to Discord.
 
-## 📋 Spis Treści
-1. [Struktura i Schemat Działania](#-struktura-i-schemat-działania)
-2. [Źródła Danych (Feedy RSS)](#-źródła-danych-feedy-rss)
-3. [Elementy Przepływu (Nodes)](#-elementy-przepływu-nodes)
-4. [Instrukcja Instalacji i Konfiguracji](#-instrukcja-instalacji-i-konfiguracji)
-5. [Jak Działa Filtrowanie, Deduplikacja i Formatowanie (JavaScript)](#-jak-działa-filtrowanie-deduplikacja-i-formatowanie-javascript)
-6. [Struktura Powiadomienia Discord](#-struktura-powiadomienia-discord)
+## 📋 Table of Contents
+1. [Structure and Workflow Schema](#-structure-and-workflow-schema)
+2. [Data Sources (RSS Feeds)](#-data-sources-rss-feeds)
+3. [Workflow Nodes](#-workflow-nodes)
+4. [Installation and Configuration Guide](#-installation-and-configuration-guide)
+5. [How Filtering, Deduplication, and Formatting Works (JavaScript)](#-how-filtering-deduplication-and-formatting-works-javascript)
+6. [Discord Notification Structure](#-discord-notification-structure)
 
 ---
 
-## 🗺️ Struktura i Schemat Działania
+## 🗺️ Structure and Workflow Schema
 
-Przepływ działa w pełni automatycznie. Pobiera dane równolegle z czterech stabilnych kanałów RSS, łączy je za pomocą kaskadowych węzłów `Merge`, a następnie w węźle `Code` filtruje według czasu publikacji, usuwa duplikaty i oczyszcza treść artykułów. Ustandaryzowany zestaw danych trafia do końcowego węzła HTTP Request, który wysyła osobny webhook dla każdego incydentu na Discorda.
+The workflow runs fully automatically. It fetches data in parallel from four stable RSS channels, merges them using cascading Merge nodes, and then in a Code node filters them by publication time, removes duplicates, and cleans the article content. The standardized dataset is sent to the final HTTP Request node, which sends a separate webhook for each incident to Discord.
 
 ```mermaid
 graph TD
-    A[Ręczne Uruchomienie] --> F1[Fetch The Hacker News]
+    A[Manual Trigger] --> F1[Fetch The Hacker News]
     A --> F2[Fetch SecurityWeek]
     A --> F3[Fetch Help Net Security]
     A --> F4[Fetch Cisco Talos]
@@ -46,64 +46,64 @@ graph TD
 
 ---
 
-## 📡 Źródła Danych (Feedy RSS)
+## 📡 Data Sources (RSS Feeds)
 
-System pobiera informacje wyłącznie z wiarygodnych, zagranicznych (angielskojęzycznych) portali i platform specjalizujących się w tematyce cyberbezpieczeństwa, które nie blokują standardowych parserów RSS (kod stanu 200):
+The system retrieves information exclusively from reliable, English-language portals and platforms specializing in cybersecurity that do not block standard RSS parsers (status code 200):
 
-1. **The Hacker News** (`https://feeds.feedburner.com/TheHackersNews`) – Wiodące, globalne źródło wiadomości o atakach hakerskich, wyciekach danych, lukach zero-day oraz operacjach grup APT.
-2. **SecurityWeek** (`https://www.securityweek.com/feed/`) – Renomowany portal dostarczający najnowsze informacje o incydentach naruszenia bezpieczeństwa danych, ransomware, kampaniach malware i bezpieczeństwie korporacyjnym.
-3. **Help Net Security** (`https://www.helpnetsecurity.com/feed/`) – Niezależna witryna informacyjna skupiona wokół cyberzagrożeń, wycieków baz danych oraz technicznych aspektów łagodzenia skutków ataków.
-4. **Cisco Talos Blog** (`https://blog.talosintelligence.com/feed/`) – Oficjalny blog jednej z największych komercyjnych grup zajmujących się wykrywaniem i analizą zagrożeń (threat intelligence) na świecie. Zawiera dogłębne analizy kampanii złośliwego oprogramowania oraz aktywności grup cyberprzestępczych.
+1. **The Hacker News** (`https://feeds.feedburner.com/TheHackersNews`) – A leading global source of news on hacking attacks, data breaches, zero-day vulnerabilities, and APT group operations.
+2. **SecurityWeek** (`https://www.securityweek.com/feed/`) – A renowned portal delivering the latest information on data breach incidents, ransomware, malware campaigns, and corporate security.
+3. **Help Net Security** (`https://www.helpnetsecurity.com/feed/`) – An independent news site focused on cyber threats, database breaches, and technical aspects of attack mitigation.
+4. **Cisco Talos Blog** (`https://blog.talosintelligence.com/feed/`) – The official blog of one of the largest commercial threat intelligence groups in the world. It contains in-depth analyses of malware campaigns and cybercriminal group activities.
 
 ---
 
-## ⚙️ Elementy Przepływu (Nodes)
+## ⚙️ Workflow Nodes
 
-* **Triggery (Wyzwalacze)**:
-  * `When clicking 'Test workflow'` – Ręczne uruchomienie całego przepływu w celu weryfikacji działania lub testów.
-  * `Schedule Trigger` – Uruchamia przepływ automatycznie codziennie o godzinie **09:00**.
-* **Węzły Pobierania RSS (`rssFeedRead`)**:
-  * Cztery równoległe instancje pobierające wpisy RSS z podanych adresów URL i parsujące je bezpośrednio w n8n na obiekty JSON.
-  * Wszystkie węzły posiadają włączoną opcję **Continue On Fail** (w razie niedostępności lub błędu jednego z portali, workflow nie przerywa działania i przetwarza pozostałe źródła).
-* **Węzły Scalania (`merge`)**:
-  * Trzy połączone kaskadowo węzły typu *Merge* w trybie *Append* łączące poszczególne listy artykułów w jedną płaską listę danych wejściowych.
+* **Triggers**:
+  * `When clicking 'Test workflow'` – Manual execution of the entire workflow for verification or testing.
+  * `Schedule Trigger` – Runs the workflow automatically every day at **09:00**.
+* **RSS Fetching Nodes (`rssFeedRead`)**:
+  * Four parallel instances fetching RSS entries from the specified URLs and parsing them directly into JSON objects within n8n.
+  * All nodes have the **Continue On Fail** option enabled (in case one of the portals is unavailable or encounters an error, the workflow continues running and processes the remaining sources).
+* **Merge Nodes (`merge`)**:
+  * Three cascading Merge nodes in Append mode combining individual article lists into a single flat list of input data.
 * **Filter & Clean (24h) (`code`)**:
-  * Węzeł wykonujący zoptymalizowany kod JavaScript. Odpowiada za:
-    * Odrzucenie artykułów starszych niż 24 godziny.
-    * Eliminację duplikatów (np. jeśli ten sam incydent został opisany na kilku portalach pod tym samym linkiem).
-    * Oczyszczenie tekstu z tagów HTML (często obecnych w opisach RSS), spacji niełamliwych `&nbsp;` oraz dekodowanie encji HTML.
-    * Skrócenie opisu do max 500 znaków (z czytelnym wielokropkiem `...` na końcu) w celu zachowania przejrzystości na telefonach i Discordzie.
-    * Przypisanie przejrzystej nazwy źródła na podstawie domeny w linku.
-    * Ograniczenie wyniku do 15 najświeższych wpisów (zabezpieczenie przed floodem).
+  * A node executing optimized JavaScript code. It is responsible for:
+    * Rejecting articles older than 24 hours.
+    * Eliminating duplicates (e.g., if the same incident was described on multiple portals with the same link).
+    * Cleaning the text of HTML tags (often present in RSS descriptions), non-breaking spaces `&nbsp;`, and decoding HTML entities.
+    * Shortening the description to a maximum of 500 characters (with a clean ellipsis `...` at the end) to maintain clarity on mobile devices and Discord.
+    * Assigning a clear source name based on the domain in the link.
+    * Limiting the result to the 15 freshest entries (flood protection).
 * **Edit Fields (`set`)**:
-  * Mapuje i standaryzuje pola wyjściowe: `title`, `content`, `link`, `pubDate`, `source`.
+  * Maps and standardizes output fields: `title`, `content`, `link`, `pubDate`, `source`.
 * **Send to Discord (`httpRequest`)**:
-  * Węzeł wykonujący zapytanie HTTP POST do Discord Webhook. Wysyła powiadomienie jako embed. Wykonuje się automatycznie w pętli dla każdego elementu przekazanego z poprzedniego węzła.
+  * A node performing an HTTP POST request to a Discord Webhook. Sends notifications as embeds. Executes automatically in a loop for each item passed from the previous node.
 
 ---
 
-## 🚀 Instrukcja Instalacji i Konfiguracji
+## 🚀 Installation and Configuration Guide
 
-### 1. Import Workflow do n8n
-1. Pobierz lub skopiuj zawartość pliku [`Breach_and_Infection_Notifier.json`](./Breach_and_Infection_Notifier.json).
-2. W panelu zarządzania n8n stwórz nowy workflow.
-3. Kliknij ikonę trzech kropek w prawym górnym rogu ekranu i wybierz **Import from JSON** (lub po prostu kliknij na pustym polu roboczym i wklej zawartość za pomocą skrótu klawiszowego `Ctrl+V`).
+### 1. Import Workflow to n8n
+1. Download or copy the contents of the [Breach_and_Infection_Notifier.json](./Breach_and_Infection_Notifier.json) file.
+2. Create a new workflow in the n8n management panel.
+3. Click the three dots icon in the top right corner of the screen and select **Import from JSON** (or simply click on the empty canvas and paste the contents using the `Ctrl+V` shortcut).
 
-### 2. Utworzenie Webhooka na Discordzie
-1. Otwórz aplikację Discord i przejdź do ustawień kanału tekstowego, na którym chcesz otrzymywać powiadomienia.
-2. Wejdź w zakładkę **Integracje** (Integrations) -> **Webhooki** (Webhooks).
-3. Kliknij **Stwórz Webhook** (Create Webhook), nadaj mu dowolną nazwę (np. "Cyber Threat Bot") i skopiuj jego URL.
+### 2. Create a Webhook on Discord
+1. Open Discord and go to the settings of the text channel where you want to receive notifications.
+2. Go to the **Integrations** tab -> **Webhooks**.
+3. Click **Create Webhook**, give it a name (e.g., "Cyber Threat Bot"), and copy its URL.
 
-### 3. Konfiguracja w n8n
-1. W zaimportowanym workflow kliknij dwukrotnie na ostatni węzeł o nazwie **Send to Discord**.
-2. W polu **URL** wklej skopiowany wcześniej adres webhooka Discorda (zamiast domyślnego `https://discord.com/api/webhooks/TUTAJ_WPISZ_TWÓJ_WEBHOOK_URL`).
-3. Zapisz zmiany w workflow (`Ctrl+S`) i aktywuj go za pomocą przełącznika **Active** w prawym górnym rogu.
+### 3. Configure in n8n
+1. In the imported workflow, double-click the last node named **Send to Discord**.
+2. In the **URL** field, paste the copied Discord webhook URL (instead of the placeholder `https://discord.com/api/webhooks/YOUR_WEBHOOK_URL_HERE`).
+3. Save changes to the workflow (`Ctrl+S`) and activate it using the **Active** toggle in the top right corner.
 
 ---
 
-## 🧠 Jak Działa Filtrowanie, Deduplikacja i Formatowanie (JavaScript)
+## 🧠 How Filtering, Deduplication, and Formatting Works (JavaScript)
 
-Poniższy kod JavaScript uruchamiany jest w węźle **Filter & Clean (24h)**:
+The following JavaScript code runs in the **Filter & Clean (24h)** node:
 
 ```javascript
 const items = $input.all();
@@ -126,16 +126,16 @@ for (const item of items) {
   const pubDate = new Date(pubDateStr);
   const pubTime = pubDate.getTime();
   
-  // Filtrowanie do 24h
+  // Filter to last 24h
   const isLast24h = !isNaN(pubTime) && pubTime >= twentyFourHoursAgo;
   if (!isLast24h) continue;
   
-  // Deduplikacja po URL
+  // Deduplicate by link
   const cleanLink = link.trim().toLowerCase();
   if (seenLinks.has(cleanLink)) continue;
   seenLinks.add(cleanLink);
   
-  // Identyfikacja źródła
+  // Identify the source
   let source = 'Security News';
   if (link.includes('thehackernews.com') || link.includes('feedburner')) {
     source = 'The Hacker News';
@@ -147,7 +147,7 @@ for (const item of items) {
     source = 'Cisco Talos';
   }
   
-  // Oczyszczanie z tagów HTML, encji i skracanie do 500 znaków
+  // Clean HTML tags and limit length
   const cleanContent = content
     .replace(/<[^>]*>/g, '')
     .replace(/&nbsp;/g, ' ')
@@ -171,23 +171,23 @@ for (const item of items) {
   });
 }
 
-// Sortowanie chronologiczne od najnowszych
+// Sort by date, newest first
 filteredItems.sort((a, b) => b.json.pubTime - a.json.pubTime);
 
-// Zabezpieczenie przed floodem (max 15 najnowszych)
+// Limit to top 15 newest entries to prevent flooding
 return filteredItems.slice(0, 15);
 ```
 
 ---
 
-## 📊 Powiadomienie Discord
+## 📊 Discord Notification Structure
 
-Wiadomości wysyłane są w postaci bogatego formatowania (Rich Embed) o czerwonym kolorze bocznym. Każdy artykuł posiada:
-*   **Tytuł (z ikoną 🚨)**: Działający jako bezpośredni, klikalny hiperlink do pełnego artykułu.
-*   **Opis**: Skrócona do 500 znaków, czytelna treść bez tagów HTML.
-*   **Stopka (Footer)**: Informacja o zidentyfikowanym źródle wiadomości (np. *Source: The Hacker News*) oraz oryginalna data publikacji artykułu.
+Messages are sent as rich embeds with a red side border. Each article features:
+*   **Title (with a 🚨 icon)**: Acts as a direct, clickable hyperlink to the full article.
+*   **Description**: Shortened to 500 characters, clean readable text without HTML tags.
+*   **Footer**: Information about the identified news source (e.g., *Source: The Hacker News*) and the article's original publication date.
 
-Przykładowy payload wysyłany do Discord API:
+Example payload sent to the Discord API:
 ```json
 {
   "embeds": [
